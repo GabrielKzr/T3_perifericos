@@ -22,7 +22,7 @@ extern uint32_t _end;			/* Start address of the heap memory, defined in linker s
 
 int32_t setjmp(jmp_buf env);
 void longjmp(jmp_buf env, int32_t val);
-void delay_us(const uint32_t us);
+// void delay_us(const uint32_t us);
 void delay_ms(const uint32_t ticks_to_wait);
 uint64_t ticks_ms(void);
 void _ei(void);

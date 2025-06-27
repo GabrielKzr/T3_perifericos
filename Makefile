@@ -41,6 +41,7 @@ USBCDC_DIR	= $(PROJECT_DIR)/src/usb_cdc
 COOS_STACKLESS_DIR	= $(PROJECT_DIR)/src/coos/stackless
 COOS_STACKFUL_DIR	= $(PROJECT_DIR)/src/coos/stackful
 USTACK_DIR	= $(PROJECT_DIR)/src/ustack
+HW_RES = ${PROJECT_DIR}/src/app/
 
 # this is stuff specific to this architecture
 INC_DIRS  = \
@@ -48,7 +49,8 @@ INC_DIRS  = \
 	-I $(CMSIS_DIR)/core \
 	-I $(CMSIS_DIR)/device \
 	-I $(USBCDC_DIR) \
-	-I $(USTACK_DIR)
+	-I $(USTACK_DIR) \
+	-I ${HW_RES}
 
 # serial port
 SERIAL_DEV = /dev/ttyACM0
@@ -143,6 +145,8 @@ APP_SRC = \
 	
 APP_SRC_STACKLESS = \
 	$(PROJECT_DIR)/src/app/main.c \
+	$(PROJECT_DIR)/src/app/MY_DHT22.c \
+	$(PROJECT_DIR)/src/app/hw_res.c \
 	$(PROJECT_DIR)/src/app/adc.c \
 	$(PROJECT_DIR)/src/app/pwm.c 
 	
