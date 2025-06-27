@@ -41,7 +41,7 @@ USBCDC_DIR	= $(PROJECT_DIR)/src/usb_cdc
 COOS_STACKLESS_DIR	= $(PROJECT_DIR)/src/coos/stackless
 COOS_STACKFUL_DIR	= $(PROJECT_DIR)/src/coos/stackful
 USTACK_DIR	= $(PROJECT_DIR)/src/ustack
-HW_RES = ${PROJECT_DIR}/src/app/
+TF_FINAL = $(PROJECT_DIR)/src/tf_resources/blackpill
 
 # this is stuff specific to this architecture
 INC_DIRS  = \
@@ -50,7 +50,7 @@ INC_DIRS  = \
 	-I $(CMSIS_DIR)/device \
 	-I $(USBCDC_DIR) \
 	-I $(USTACK_DIR) \
-	-I ${HW_RES}
+	-I ${TF_FINAL}
 
 # serial port
 SERIAL_DEV = /dev/ttyACM0
@@ -144,9 +144,9 @@ APP_SRC = \
 	$(PROJECT_DIR)/src/main.c
 	
 APP_SRC_STACKLESS = \
+	$(TF_FINAL)/MY_DHT22.c \
+	$(TF_FINAL)/hw_res.c \
 	$(PROJECT_DIR)/src/app/main.c \
-	$(PROJECT_DIR)/src/app/MY_DHT22.c \
-	$(PROJECT_DIR)/src/app/hw_res.c \
 	$(PROJECT_DIR)/src/app/adc.c \
 	$(PROJECT_DIR)/src/app/pwm.c 
 	
@@ -206,6 +206,9 @@ tuntap_cap:
 
 serial:
 	stty -F ${SERIAL_DEV} ${SERIAL_BR} raw cs8 -echo
+
+#serial:
+#	stty ${SERIAL_BR} raw cs8 -parenb -crtscts clocal cread ignpar ignbrk -ixon -ixoff -ixany -brkint -icrnl -imaxbel -opost -onlcr -isig -icanon -iexten -echo -echoe -echok -echoctl -echoke -F ${SERIAL_DEV}
 
 eth_up: serial
 	./tuntap_if_host ${SERIAL_DEV}

@@ -18,6 +18,7 @@
 #define SENSOR_LDR		"oi/teste/lux"
 #define SENSOR_TEMP		"oi/teste/temp"
 #define SENSOR_HUMIDITY	"oi/teste/humidity"
+#define ACTUATOR1		"oi/teste/actuator1"
 
 struct dht_s dht_sensor = {
 	.type = DHT22,
@@ -47,27 +48,47 @@ void adc_config(void);
 void adc_channel(uint8_t channel);
 uint16_t adc_read();
 void setup_topic(uint8_t *packet, char *topic);
+void set_relay1_topic(char * dataval);
+int control_relay1(int val);
 
 /* PWM library */
 void pwm_config();
 
 int32_t app_udp_handler(uint8_t *packet)
 {
-	/*
 	uint8_t dst_addr[4];
 	uint16_t src_port, dst_port;
 	struct ip_udp_s *udp = (struct ip_udp_s *)packet;
-	uint8_t msg[] = "Ola Mundo!\n";
-	
-	src_port = ntohs(udp->udp.src_port);
-	dst_port = ntohs(udp->udp.dst_port);
-	
-	if (dst_port == UDP_DEFAULT_PORT) {
+	char *datain, *dataval;
+	char data[256];
+
+	src_port = ntohs(udp->udp.dst_port);
+	dst_port = ntohs(udp->udp.src_port);
+
+	if (ntohs(udp->udp.dst_port) == UDP_DEFAULT_PORT) {
 		memcpy(dst_addr, udp->ip.src_addr, 4);
-		memcpy(packet + sizeof(struct ip_udp_s), msg, sizeof(msg));
-		udp_out(dst_addr, dst_port, src_port, packet, sizeof(struct udp_s) + sizeof(msg));
+		
+		datain = (char *)packet + sizeof(struct ip_udp_s);
+		datain[ntohs(udp->udp.len) - sizeof(struct udp_s)] = '\0';
+		
+		if (strstr(datain, ACTUATOR1)){
+			/* skip topic name */
+			dataval = strstr(datain, " ") + 1;
+			
+			set_relay1_topic(dataval);
+			
+			/* print received data and its origin */
+			sprintf(data, "[%s]", dataval,
+			udp->ip.src_addr[0], udp->ip.src_addr[1], udp->ip.src_addr[2], udp->ip.src_addr[3]);
+
+			/* toggle LED */
+			GPIO_ToggleBits(GPIOC, GPIO_Pin_13);
+
+			/* send data back, just bacause we can (this is not needed) */
+			memcpy(packet + sizeof(struct ip_udp_s), data, strlen(data));
+			udp_out(dst_addr, src_port, dst_port, packet, sizeof(struct udp_s) + strlen(data));
+		}
 	}
-	*/
 	
 	return 0;
 }
@@ -140,7 +161,25 @@ void *hello_task(void *)
 	return 0;
 }
 */
-int control_relay1(int val){ 
+
+void set_relay1_topic(char * dataval)
+{
+	if(strcmp(dataval, "-1") == 0) control_relay1(-1);
+	else { 
+		int control_relay =  control_relay1(0);
+		if(control_relay == -1) { 
+			if(strcmp(dataval, "turn on relay1 ") == 0) {
+				GPIO_SetBits(GPIOB, GPIO_Pin_6);
+			} 	
+			else if (strcmp(dataval, "turn off relay1") == 0) {
+				GPIO_ResetBits(GPIOB, GPIO_Pin_6);
+			} 
+		} 
+	}
+}
+
+int control_relay1(int val)
+{ 
 	//val = 0 to read the value of control relay1
 	//val = -1 to toggle the value of control relay1 
 	static int relay1_control = 1;
@@ -295,6 +334,28 @@ int main(void)
 	adc_config();
 	pwm_config();
 	tim2_init();
+
+	/* setup ustack */
+	if_setup();
+	config(mymac + 2, USTACK_IP_ADDR);
+	config(myip, USTACK_IP_ADDR);
+	config(mynm, USTACK_NETMASK);
+	config(mygw, USTACK_GW_ADDR);
+
+	net_setup(packet);
+	udp_set_callback(app_udp_handler);
+
+	setup_topic(packet, SENSOR_LDR);
+	setup_topic(packet, SENSOR_TEMP);
+	setup_topic(packet, SENSOR_HUMIDITY);
+	setup_topic(packet, ACTUATOR1);
+
+	/* setup CoOS and tasks */
+	task_pinit(ptasks);
+	task_add(ptasks, network_task, 50);
+	task_add(ptasks, temp, 50);
+    task_add(ptasks, ldr, 50);
+
 	dht_setup(&dht_sensor, DHT22, RCC_AHB1Periph_GPIOB, GPIOB, GPIO_Pin_7);
 
 	GPIO_InitTypeDef GPIO_InitStructure;
@@ -311,26 +372,6 @@ int main(void)
 	GPIO_Init(GPIOB, &GPIO_InitStructure);
 	
 	GPIO_ResetBits(GPIOB, GPIO_Pin_6);
-
-	/* setup ustack */
-	if_setup();
-	config(mymac + 2, USTACK_IP_ADDR);
-	config(myip, USTACK_IP_ADDR);
-	config(mynm, USTACK_NETMASK);
-	config(mygw, USTACK_GW_ADDR);
-
-	net_setup(packet);
-	udp_set_callback(app_udp_handler);
-
-	setup_topic(packet, SENSOR_LDR);
-	setup_topic(packet, SENSOR_TEMP);
-	setup_topic(packet, SENSOR_HUMIDITY);
-
-	/* setup CoOS and tasks */
-	task_pinit(ptasks);
-	task_add(ptasks, network_task, 50);
-	task_add(ptasks, temp, 50);
-    task_add(ptasks, ldr, 50);
 	
 	srand(123);
 
