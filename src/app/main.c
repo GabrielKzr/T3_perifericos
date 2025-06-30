@@ -19,6 +19,7 @@
 #define SENSOR_TEMP		"oi/teste/temp"
 #define SENSOR_HUMIDITY	"oi/teste/humidity"
 #define ACTUATOR1		"oi/teste/actuator1"
+#define DIMER 			"oi/teste/dimer"
 
 struct dht_s dht_sensor = {
 	.type = DHT22,
@@ -32,9 +33,11 @@ const float ADC_MAX = 4095.0;		// max ADC value
 const int ADC_SAMPLES = 1024;		// ADC read samples
 const int REF_RESISTANCE = 10000;	// 4k7 ohms
 
-const int LUX_MIN = 10;
-const int LUX_MAX = 100;
+int LUX_MIN = -1;
+int LUX_MAX = -1;
 const int DUTY_MAX = 1000;
+
+int DIMER_FLAG = 0;
 
 uint8_t eth_frame[FRAME_SIZE];
 uint8_t mymac[6] = {0x0e, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -50,6 +53,9 @@ uint16_t adc_read();
 void setup_topic(uint8_t *packet, char *topic);
 void set_relay1_topic(char * dataval);
 int control_relay1(int val);
+void set_relay2_topic(char * dataval);
+void dimer_topic(char * dataval);
+void set_pwm_percent(int percent);
 
 /* PWM library */
 void pwm_config();
@@ -75,18 +81,23 @@ int32_t app_udp_handler(uint8_t *packet)
 			/* skip topic name */
 			dataval = strstr(datain, " ") + 1;
 			
-			set_relay1_topic(dataval);
+			set_relay2_topic(dataval);
 			
 			/* print received data and its origin */
 			sprintf(data, "[%s]", dataval,
 			udp->ip.src_addr[0], udp->ip.src_addr[1], udp->ip.src_addr[2], udp->ip.src_addr[3]);
 
 			/* toggle LED */
-			GPIO_ToggleBits(GPIOC, GPIO_Pin_13);
+			// GPIO_ToggleBits(GPIOC, GPIO_Pin_13);
 
 			/* send data back, just bacause we can (this is not needed) */
 			memcpy(packet + sizeof(struct ip_udp_s), data, strlen(data));
 			udp_out(dst_addr, src_port, dst_port, packet, sizeof(struct udp_s) + strlen(data));
+		} else if(strstr(datain, DIMER)) {
+
+			dataval = strstr(datain, " ") + 1;
+
+			dimer_topic(dataval);			
 		}
 	}
 	
@@ -102,12 +113,12 @@ void *network_task(void *)
 
 	if (len > 0) {
 		// turn board LED on 
-		GPIO_ResetBits(GPIOC, GPIO_Pin_13);
+		//GPIO_ResetBits(GPIOC, GPIO_Pin_13);
 		
 		ip_in(myip, packet, len);
 	
 		// turn board LED off 
-		GPIO_SetBits(GPIOC, GPIO_Pin_13);	
+		//GPIO_SetBits(GPIOC, GPIO_Pin_13);	
 	}
 	
 	return 0;
@@ -178,6 +189,67 @@ void set_relay1_topic(char * dataval)
 	}
 }
 
+void set_relay2_topic(char * dataval)
+{
+	if(strcmp(dataval, "1") == 0) {
+		GPIO_SetBits(GPIOB, GPIO_Pin_5);
+		// GPIO_SetBits(GPIOC, GPIO_Pin_13);
+	} 	
+	else if (strcmp(dataval, "0") == 0) {
+		GPIO_ResetBits(GPIOB, GPIO_Pin_5);
+		// GPIO_ResetBits(GPIOC, GPIO_Pin_13);
+	} 
+}
+
+void dimer_topic(char *dataval)
+{
+    char type[4];  // cabe “min”/“max”/“dim” + '\0'
+    const char *space;
+    const char *numstr;
+    char *endptr;
+    int num;
+    size_t len;
+
+    // 1) localiza o primeiro espaço
+    space = strchr(dataval, ' ');
+    if (!space) return;  // sem separador, sai
+
+    // 2) calcula e valida comprimento do tipo
+    len = space - dataval;
+    if (len == 0 || len > 3) return;  // vazio ou muito grande
+
+    // 3) copia e encerra com '\0'
+    memcpy(type, dataval, len);
+    type[len] = '\0';
+
+    // 4) valida somente os tipos permitidos
+    if (strcmp(type, "min") != 0 &&
+        strcmp(type, "max") != 0 &&
+        strcmp(type, "dim") != 0) {
+        return;
+    }
+
+    // 5) aponta para o início do número e pula espaços
+    numstr = space + 1;
+    while (*numstr == ' ') ++numstr;
+    if (*numstr == '\0') return;  // sem número
+
+    // 6) converte com strtol e valida
+    num = strtol(numstr, &endptr, 10);
+    if (endptr == numstr) return;        // nada convertido
+    while (*endptr == ' ') ++endptr;     // pula espaços finais
+    if (*endptr != '\0') return;         // caracteres extras => formatação errada
+
+    // 7) aqui você tem ‘type’ válido e ‘num’ convertido
+    if (strcmp(type, "min") == 0) {
+        LUX_MIN = (int)num;
+    } else if (strcmp(type, "max") == 0) {
+        LUX_MAX = (int)num;
+    } else {  // dim
+		set_pwm_percent((int)num);
+    }
+}
+
 int control_relay1(int val)
 { 
 	//val = 0 to read the value of control relay1
@@ -219,11 +291,12 @@ void read_humidity(uint8_t *packet, char *topic)
 
 void set_relay1_automatic ()
 {
+	//GPIO_ToggleBits(GPIOC, GPIO_Pin_13);
  	int control_relay =  control_relay1(0);
 	dht_read(&dht_sensor);
 		if(control_relay == 1) { 
 			//int temp = (int)dht_sensor.temperature/10 + (dht_sensor.temperature%10)/10.0;	
-			int  temp = dht_sensor.temperature + (random() % 7 - 3);
+			int  temp = dht_sensor.temperature; // + (random() % 7 - 3);
 			if(temp < 194)  {
 				GPIO_SetBits(GPIOB, GPIO_Pin_6);
   			}
@@ -232,6 +305,7 @@ void set_relay1_automatic ()
    			}
 	} 
 }
+
 
 float luminosity()
 {
@@ -246,16 +320,35 @@ float luminosity()
 	return (lux / ADC_SAMPLES);
 }
 
+static void _set_pwm_duty(int duty_cycle)
+{
+    if (duty_cycle < 0) duty_cycle = 0;
+    if (duty_cycle > DUTY_MAX) duty_cycle = DUTY_MAX;
+
+    TIM4->CCR4 = duty_cycle;
+}
+
+// Interface 1: com base na luminosidade
 void set_pwm_lux(float lux)
 {
-    int duty_cycle;
-    
     if (lux < LUX_MIN) lux = LUX_MIN;
     if (lux > LUX_MAX) lux = LUX_MAX;
-    
-    duty_cycle = (1.0 - (lux - LUX_MIN) / (LUX_MAX - LUX_MIN)) * DUTY_MAX;
-    
-    TIM4->CCR4 = duty_cycle;
+
+    float ratio = 1.0 - (lux - LUX_MIN) / (LUX_MAX - LUX_MIN);
+    int duty = (int)(ratio * DUTY_MAX);
+
+    _set_pwm_duty(duty);
+}
+
+// Interface 2: com base em percentual (0 a 100)
+void set_pwm_percent(int percent)
+{
+    if (percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
+
+    int duty = (int)((percent / 100.0) * DUTY_MAX);
+
+    _set_pwm_duty(duty);
 }
 
 void sensor_ldr_data(uint8_t *packet, char *topic, float val)
@@ -289,8 +382,10 @@ void *ldr(void *arg)
     
     if (sensor1_poll_data()) {
 		sensor_ldr_data(packet, SENSOR_LDR, f);
-		set_pwm_lux(f);
-		GPIO_ToggleBits(GPIOC, GPIO_Pin_13);
+		if(LUX_MIN != -1 && LUX_MAX != -1) {
+			set_pwm_lux(f);
+		}
+		// GPIO_ToggleBits(GPIOC, GPIO_Pin_13);
     }
     
 	return 0;
@@ -301,7 +396,7 @@ void *temp(void *)
 	uint8_t *packet = eth_frame + sizeof(struct eth_s);
 	
 	if (sensor2_poll_data()) {
-		delay_ms(200);
+		//delay_ms(200);
 		read_temperature(packet, SENSOR_TEMP);
 		read_humidity(packet, SENSOR_HUMIDITY);
 		set_relay1_automatic();
@@ -349,6 +444,8 @@ int main(void)
 	setup_topic(packet, SENSOR_TEMP);
 	setup_topic(packet, SENSOR_HUMIDITY);
 	setup_topic(packet, ACTUATOR1);
+	setup_topic(packet, DIMER);
+
 
 	/* setup CoOS and tasks */
 	task_pinit(ptasks);
@@ -358,12 +455,12 @@ int main(void)
 
 	dht_setup(&dht_sensor, DHT22, RCC_AHB1Periph_GPIOB, GPIOB, GPIO_Pin_7);
 
-	GPIO_InitTypeDef GPIO_InitStructure;
-
+	
 	/* GPIOC Peripheral clock enable. */
 	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);
-
+	
 	/* configure board LED as output */
+	GPIO_InitTypeDef GPIO_InitStructure;
 	GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_6;
 	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_OUT;
 	GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
@@ -372,6 +469,15 @@ int main(void)
 	GPIO_Init(GPIOB, &GPIO_InitStructure);
 	
 	GPIO_ResetBits(GPIOB, GPIO_Pin_6);
+
+	GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_5;
+	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_OUT;
+	GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_2MHz;
+	GPIO_InitStructure.GPIO_PuPd  = GPIO_PuPd_NOPULL;
+	GPIO_Init(GPIOB, &GPIO_InitStructure);
+
+	GPIO_SetBits(GPIOB, GPIO_Pin_5);
 	
 	srand(123);
 
