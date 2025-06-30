@@ -1,0 +1,21 @@
+
+firmware.elf:     file format elf32-littlearm
+
+Sections:
+Idx Name          Size      VMA       LMA       File off  Algn
+  0 .isr_vector   00000188  08000000  08000000  00010000  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  1 .text         00004c68  08000188  08000188  00010188  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  2 .data         00000174  20000000  08004df0  00020000  2**2
+                  CONTENTS, ALLOC, LOAD, DATA
+  3 .bss          00001794  20000178  08004f68  00020174  2**3
+                  ALLOC
+  4 .heap         0000c6f4  2000190c  080066fc  00020174  2**0
+                  ALLOC
+  5 .stack        00002000  2000e000  08012df0  00020174  2**0
+                  ALLOC
+  6 .comment      00000045  00000000  00000000  00020174  2**0
+                  CONTENTS, READONLY
+  7 .ARM.attributes 00000032  00000000  00000000  000201b9  2**0
+                  CONTENTS, READONLY

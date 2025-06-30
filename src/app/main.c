@@ -18,14 +18,34 @@
 #define SENSOR_LDR		"oi/teste/lux"
 #define SENSOR_TEMP		"oi/teste/temp"
 #define SENSOR_HUMIDITY	"oi/teste/humidity"
-#define ACTUATOR1		"oi/teste/actuator1"
+// #define ACTUATOR1		"oi/teste/actuator1"
 #define DIMER 			"oi/teste/dimer"
+#define RELAY1			"oi/teste/relay1"
+#define RELAY2			"oi/teste/relay2"
 
 struct dht_s dht_sensor = {
 	.type = DHT22,
 	.data = {0},
 	.temperature = 0,
 	.humidity = 0
+};
+
+struct relay_t {
+	uint16_t pin,
+	TEMP_MIN,
+	TEMP_MAX;
+};
+
+struct relay_t relay1 = {
+	.pin = GPIO_Pin_6,
+	.TEMP_MIN = -1,
+	.TEMP_MAX = -1
+};
+
+struct relay_t relay2 = {
+	.pin = GPIO_Pin_5,
+	.TEMP_MIN = -1,
+	.TEMP_MAX = -1
 };
 
 const float V_RAIL = 3300.0;		// 3300mV rail voltage
@@ -36,8 +56,6 @@ const int REF_RESISTANCE = 10000;	// 4k7 ohms
 int LUX_MIN = -1;
 int LUX_MAX = -1;
 const int DUTY_MAX = 1000;
-
-int DIMER_FLAG = 0;
 
 uint8_t eth_frame[FRAME_SIZE];
 uint8_t mymac[6] = {0x0e, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -51,53 +69,50 @@ void adc_config(void);
 void adc_channel(uint8_t channel);
 uint16_t adc_read();
 void setup_topic(uint8_t *packet, char *topic);
-void set_relay1_topic(char * dataval);
-int control_relay1(int val);
-void set_relay2_topic(char * dataval);
 void dimer_topic(char * dataval);
 void set_pwm_percent(int percent);
+void relay_topic(const char *dataval, struct relay_t *relay);
+void relay_on(uint16_t pin);
+void relay_off(uint16_t pin);
 
 /* PWM library */
 void pwm_config();
 
 int32_t app_udp_handler(uint8_t *packet)
 {
-	uint8_t dst_addr[4];
-	uint16_t src_port, dst_port;
 	struct ip_udp_s *udp = (struct ip_udp_s *)packet;
 	char *datain, *dataval;
-	char data[256];
-
-	src_port = ntohs(udp->udp.dst_port);
-	dst_port = ntohs(udp->udp.src_port);
 
 	if (ntohs(udp->udp.dst_port) == UDP_DEFAULT_PORT) {
-		memcpy(dst_addr, udp->ip.src_addr, 4);
 		
 		datain = (char *)packet + sizeof(struct ip_udp_s);
 		datain[ntohs(udp->udp.len) - sizeof(struct udp_s)] = '\0';
 		
-		if (strstr(datain, ACTUATOR1)){
-			/* skip topic name */
-			dataval = strstr(datain, " ") + 1;
+		
+		if(strstr(datain, RELAY1)) {
+			GPIO_ToggleBits(GPIOC, GPIO_Pin_13);
+		}
+		if(strstr(datain, DIMER)) {
+
+			GPIO_ToggleBits(GPIOC, GPIO_Pin_13);
 			
-			set_relay2_topic(dataval);
-			
-			/* print received data and its origin */
-			sprintf(data, "[%s]", dataval,
-			udp->ip.src_addr[0], udp->ip.src_addr[1], udp->ip.src_addr[2], udp->ip.src_addr[3]);
-
-			/* toggle LED */
-			// GPIO_ToggleBits(GPIOC, GPIO_Pin_13);
-
-			/* send data back, just bacause we can (this is not needed) */
-			memcpy(packet + sizeof(struct ip_udp_s), data, strlen(data));
-			udp_out(dst_addr, src_port, dst_port, packet, sizeof(struct udp_s) + strlen(data));
-		} else if(strstr(datain, DIMER)) {
-
 			dataval = strstr(datain, " ") + 1;
 
 			dimer_topic(dataval);			
+		} else if(strstr(datain, RELAY1)) {
+
+			GPIO_ToggleBits(GPIOC, GPIO_Pin_13);
+
+			dataval = strstr(datain, " ") + 1;
+
+			relay_topic(dataval, &relay1);
+		} else if(strstr(datain, RELAY2)) {
+
+			GPIO_ToggleBits(GPIOC, GPIO_Pin_13);
+
+			dataval = strstr(datain, " ") + 1;
+
+			relay_topic(dataval, &relay2);
 		}
 	}
 	
@@ -148,7 +163,7 @@ void *hello_task(void *)
 	uint8_t dst_addr[4] = {172, 31, 69, 55};
 	uint8_t dst_mac[6] = {0x00, 0x00, 0x00, 0x33, 0x33, 0x33};
 	uint16_t src_port, dst_port;
-	char *msg = "Send this to the network...";
+	char *msg = "Send this to the network...";ACTUATOR1
 	char data[512];
 	static int count = 0;
 	static int pkt = 1;
@@ -172,34 +187,6 @@ void *hello_task(void *)
 	return 0;
 }
 */
-
-void set_relay1_topic(char * dataval)
-{
-	if(strcmp(dataval, "-1") == 0) control_relay1(-1);
-	else { 
-		int control_relay =  control_relay1(0);
-		if(control_relay == -1) { 
-			if(strcmp(dataval, "turn on relay1 ") == 0) {
-				GPIO_SetBits(GPIOB, GPIO_Pin_6);
-			} 	
-			else if (strcmp(dataval, "turn off relay1") == 0) {
-				GPIO_ResetBits(GPIOB, GPIO_Pin_6);
-			} 
-		} 
-	}
-}
-
-void set_relay2_topic(char * dataval)
-{
-	if(strcmp(dataval, "1") == 0) {
-		GPIO_SetBits(GPIOB, GPIO_Pin_5);
-		// GPIO_SetBits(GPIOC, GPIO_Pin_13);
-	} 	
-	else if (strcmp(dataval, "0") == 0) {
-		GPIO_ResetBits(GPIOB, GPIO_Pin_5);
-		// GPIO_ResetBits(GPIOC, GPIO_Pin_13);
-	} 
-}
 
 void dimer_topic(char *dataval)
 {
@@ -250,15 +237,76 @@ void dimer_topic(char *dataval)
     }
 }
 
-int control_relay1(int val)
-{ 
-	//val = 0 to read the value of control relay1
-	//val = -1 to toggle the value of control relay1 
-	static int relay1_control = 1;
-	if(val == -1){
-		relay1_control = relay1_control * -1; 
-	}
-	return relay1_control;
+void relay_topic(const char *dataval, struct relay_t *relay)
+{
+    char cmd[4];        // “on”, “off”, “min” ou “max” + '\0'
+    const char *space;
+    const char *argstr;
+    char *endptr;
+    long val;
+    size_t len;
+
+    // 1) localiza o primeiro espaço (se houver)
+    space = strchr(dataval, ' ');
+    if (space) {
+        len = space - dataval;
+        if (len == 0 || len > 3) return;           // comando vazio ou muito longo
+        memcpy(cmd, dataval, len);
+        cmd[len] = '\0';
+        // prepara a string do argumento
+        argstr = space + 1;
+        while (*argstr && isspace((unsigned char)*argstr)) ++argstr;
+    }
+    else {
+        // não há espaço: todo dataval é o comando
+        len = strlen(dataval);
+        if (len == 0 || len > 3) return;
+        strncpy(cmd, dataval, 3);
+        cmd[3] = '\0';
+        argstr = NULL;
+    }
+
+    // 3) trata cada comando
+    if (strcmp(cmd, "on") == 0) {
+		if(relay->TEMP_MIN != -1 && relay->TEMP_MAX != -1) {
+        	relay_on(relay->pin);
+		}
+    }
+    else if (strcmp(cmd, "off") == 0) {
+		if(relay->TEMP_MIN != -1 && relay->TEMP_MAX != -1) {
+        	relay_off(relay->pin);
+		}
+    }
+    else if ((strcmp(cmd, "min") == 0 || strcmp(cmd, "max") == 0) && argstr) {
+        // converte o valor numérico após min/max
+        val = strtol(argstr, &endptr, 10);
+        if (endptr == argstr) return;              // nada convertido
+        while (*endptr && isspace((unsigned char)*endptr)) ++endptr;
+        if (*endptr != '\0') return;              // lixo extra -> aborta
+
+        if (strcmp(cmd, "min") == 0) {
+            relay->TEMP_MIN = (int)val;
+        } else {
+            relay->TEMP_MAX = (int)val;
+        }
+
+        // opcional: após ajustar o range, verificar estado atual do relé
+        // ex: check_and_update_relay(read_current_temperature());
+    }
+    else {
+        // comando inválido: ignora
+        return;
+    }
+}
+
+void relay_on(uint16_t pin)
+{
+	GPIO_ResetBits(GPIOB, pin);
+}
+
+void relay_off(uint16_t pin)
+{
+	GPIO_SetBits(GPIOB, pin);
 }
 
 /* these functions are called when timer 2 generates an interrupt */
@@ -289,21 +337,16 @@ void read_humidity(uint8_t *packet, char *topic)
 	udp_out(dst_addr, src_port, dst_port, packet, sizeof(struct udp_s) + strlen(data));
 }
 
-void set_relay1_automatic ()
+void set_relay_automatic (struct relay_t *relay)
 {
-	//GPIO_ToggleBits(GPIOC, GPIO_Pin_13);
- 	int control_relay =  control_relay1(0);
 	dht_read(&dht_sensor);
-		if(control_relay == 1) { 
-			//int temp = (int)dht_sensor.temperature/10 + (dht_sensor.temperature%10)/10.0;	
-			int  temp = dht_sensor.temperature; // + (random() % 7 - 3);
-			if(temp < 194)  {
-				GPIO_SetBits(GPIOB, GPIO_Pin_6);
-  			}
-   			else if (temp >= 194) {
-				GPIO_ResetBits(GPIOB, GPIO_Pin_6);
-   			}
-	} 
+	int  temp = dht_sensor.temperature;
+
+	if(temp >= relay->TEMP_MIN && temp <= relay->TEMP_MAX) {
+		relay_on(relay->pin);
+	} else {
+		relay_off(relay->pin);
+	}
 }
 
 
@@ -343,6 +386,10 @@ void set_pwm_lux(float lux)
 // Interface 2: com base em percentual (0 a 100)
 void set_pwm_percent(int percent)
 {
+	if (LUX_MAX != -1 && LUX_MIN != -1) {
+		// Se os limites estão definidos, não faz nada
+		return;
+	}
     if (percent < 0) percent = 0;
     if (percent > 100) percent = 100;
 
@@ -399,7 +446,16 @@ void *temp(void *)
 		//delay_ms(200);
 		read_temperature(packet, SENSOR_TEMP);
 		read_humidity(packet, SENSOR_HUMIDITY);
-		set_relay1_automatic();
+
+		if(relay1.TEMP_MIN != -1 && relay1.TEMP_MAX != -1) 
+		{
+			set_relay_automatic(&relay1);
+		}
+
+		if(relay2.TEMP_MIN != -1 && relay2.TEMP_MAX != -1)
+		{
+			set_relay_automatic(&relay2);
+		}
 	}
 	
 	return 0;
@@ -443,8 +499,10 @@ int main(void)
 	setup_topic(packet, SENSOR_LDR);
 	setup_topic(packet, SENSOR_TEMP);
 	setup_topic(packet, SENSOR_HUMIDITY);
-	setup_topic(packet, ACTUATOR1);
+	// setup_topic(packet, ACTUATOR1);
 	setup_topic(packet, DIMER);
+	setup_topic(packet, RELAY1);
+	setup_topic(packet, RELAY2);
 
 
 	/* setup CoOS and tasks */
@@ -468,7 +526,7 @@ int main(void)
 	GPIO_InitStructure.GPIO_PuPd  = GPIO_PuPd_NOPULL;
 	GPIO_Init(GPIOB, &GPIO_InitStructure);
 	
-	GPIO_ResetBits(GPIOB, GPIO_Pin_6);
+	GPIO_SetBits(GPIOB, GPIO_Pin_6);
 
 	GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_5;
 	GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_OUT;
