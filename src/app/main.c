@@ -31,9 +31,9 @@ struct dht_s dht_sensor = {
 };
 
 struct relay_t {
-	uint16_t pin,
-	TEMP_MIN,
-	TEMP_MAX;
+	uint16_t pin;
+	int TEMP_MIN;
+	int TEMP_MAX;
 };
 
 struct relay_t relay1 = {
@@ -83,24 +83,23 @@ int32_t app_udp_handler(uint8_t *packet)
 	struct ip_udp_s *udp = (struct ip_udp_s *)packet;
 	char *datain, *dataval;
 
+	// GPIO_ToggleBits(GPIOC, GPIO_Pin_13);
+
 	if (ntohs(udp->udp.dst_port) == UDP_DEFAULT_PORT) {
 		
 		datain = (char *)packet + sizeof(struct ip_udp_s);
 		datain[ntohs(udp->udp.len) - sizeof(struct udp_s)] = '\0';
 		
-		
-		if(strstr(datain, RELAY1)) {
-			GPIO_ToggleBits(GPIOC, GPIO_Pin_13);
-		}
 		if(strstr(datain, DIMER)) {
 
-			GPIO_ToggleBits(GPIOC, GPIO_Pin_13);
-			
+			// GPIO_ToggleBits(GPIOC, GPIO_Pin_13);
+
 			dataval = strstr(datain, " ") + 1;
 
 			dimer_topic(dataval);			
 		} else if(strstr(datain, RELAY1)) {
 
+			// GPIO_ToggleBits(GPIOC, GPIO_Pin_13);
 			GPIO_ToggleBits(GPIOC, GPIO_Pin_13);
 
 			dataval = strstr(datain, " ") + 1;
@@ -108,7 +107,9 @@ int32_t app_udp_handler(uint8_t *packet)
 			relay_topic(dataval, &relay1);
 		} else if(strstr(datain, RELAY2)) {
 
+
 			GPIO_ToggleBits(GPIOC, GPIO_Pin_13);
+			// GPIO_ToggleBits(GPIOC, GPIO_Pin_13);
 
 			dataval = strstr(datain, " ") + 1;
 
@@ -268,12 +269,12 @@ void relay_topic(const char *dataval, struct relay_t *relay)
 
     // 3) trata cada comando
     if (strcmp(cmd, "on") == 0) {
-		if(relay->TEMP_MIN != -1 && relay->TEMP_MAX != -1) {
+		if(relay->TEMP_MIN == -1 || relay->TEMP_MAX == -1) {
         	relay_on(relay->pin);
 		}
     }
     else if (strcmp(cmd, "off") == 0) {
-		if(relay->TEMP_MIN != -1 && relay->TEMP_MAX != -1) {
+		if(relay->TEMP_MIN == -1 || relay->TEMP_MAX == -1) {
         	relay_off(relay->pin);
 		}
     }
@@ -340,9 +341,11 @@ void read_humidity(uint8_t *packet, char *topic)
 void set_relay_automatic (struct relay_t *relay)
 {
 	dht_read(&dht_sensor);
-	int  temp = dht_sensor.temperature;
+	int  temp = dht_sensor.temperature;    if (relay->TEMP_MIN == -1 || relay->TEMP_MAX == -1) {
+        return;
+    }
 
-	if(temp >= relay->TEMP_MIN && temp <= relay->TEMP_MAX) {
+	if(temp >= relay->TEMP_MIN*10 && temp <= relay->TEMP_MAX*10) {
 		relay_on(relay->pin);
 	} else {
 		relay_off(relay->pin);
@@ -408,8 +411,8 @@ void sensor_ldr_data(uint8_t *packet, char *topic, float val)
 	memset(data, 0, sizeof(data));
 	memset(buf, 0, sizeof(buf));
 	
-    if (val < LUX_MIN) val = LUX_MIN;
-    if (val > LUX_MAX) val = LUX_MAX;
+    // if (val < LUX_MIN) val = LUX_MIN;
+    // if (val > LUX_MAX) val = LUX_MAX;
 
 	ftoa(val, buf, 1);
 	sprintf(data, "PUBLISH %s %s", topic, buf);
